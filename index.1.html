@@ -1,0 +1,252 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SAURABH BHAIYA AI</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;background:#050b0b;color:white;
+ font-family:Arial,sans-serif;
+}
+header{text-align:center;padding:20px;border-bottom:1px solid #15594c}
+h1{color:#00ffc3;letter-spacing:3px}
+.container{max-width:600px;margin:auto;padding:20px}
+.status{text-align:center;color:#00ffc3;margin:20px}
+.circle{
+ width:190px;height:190px;border:2px solid #00ffc3;
+ border-radius:50%;margin:35px auto;
+ display:flex;align-items:center;justify-content:center;
+ box-shadow:0 0 30px #00ffc355;
+}
+.mic{
+ width:125px;height:125px;border:0;border-radius:50%;
+ background:#00ffc3;font-size:48px;cursor:pointer;
+}
+.controls{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+select,button,input{
+ padding:13px;border-radius:10px;
+ border:1px solid #17665a;background:#10201d;
+ color:white;font-size:15px;
+}
+button{cursor:pointer}
+.chat{
+ margin-top:25px;background:#0c1715;
+ border:1px solid #174c42;border-radius:15px;
+ padding:15px;min-height:200px;
+ max-height:400px;overflow-y:auto;
+}
+.message{padding:12px;margin:10px 0;border-radius:10px;overflow-wrap:anywhere}
+.user{background:#132923;border-left:3px solid #00ffc3}
+.ai{background:#102532;border-left:3px solid #00aaff}
+.inputarea{display:flex;gap:8px;margin-top:15px}
+.inputarea input{flex:1;min-width:0}
+.small{text-align:center;color:#78938b;font-size:12px;margin-top:25px}
+</style>
+</head>
+
+<body>
+
+<header>
+<h1>SAURABH BHAIYA</h1>
+<p>YOUR PERSONAL AI ASSISTANT</p>
+</header>
+
+<div class="container">
+
+<div class="status" id="status">● SYSTEM READY</div>
+
+<div class="circle">
+<button class="mic" onclick="listen()">🎙️</button>
+</div>
+
+<p style="text-align:center">TAP TO SPEAK</p>
+
+<div class="controls">
+<select id="language">
+<option value="mr-IN">मराठी</option>
+<option value="hi-IN">हिंदी</option>
+<option value="en-IN">English</option>
+</select>
+<button onclick="stopVoice()">STOP VOICE</button>
+</div>
+
+<div class="chat" id="chat">
+<div class="message ai">
+नमस्कार! मी सौरभ भैया. मी तुझी मदत करण्यासाठी तयार आहे.
+</div>
+</div>
+
+<div class="inputarea">
+<input id="input" placeholder="Ask me anything...">
+<button onclick="send()">SEND</button>
+</div>
+
+<div class="small">
+SAURABH BHAIYA AI • VERSION 2.0
+</div>
+
+</div>
+
+<script>
+const chat=document.getElementById("chat");
+const statusText=document.getElementById("status");
+const input=document.getElementById("input");
+
+let history=[];
+
+const systemPrompt = `
+You are Saurabh Bhaiya, an advanced personal AI assistant.
+You can communicate in Marathi, Hindi and English.
+Always answer in the language used by the user.
+Understand the user's meaning and provide a useful, original answer.
+NEVER repeat the user's question.
+NEVER echo, copy or repeat the user's sentence.
+Do not merely translate the user's words.
+Be natural, helpful and concise.
+`;
+
+function addMessage(text,type){
+ const div=document.createElement("div");
+ div.className="message "+type;
+ div.textContent=text;
+ chat.appendChild(div);
+ chat.scrollTop=chat.scrollHeight;
+}
+
+function speak(text){
+ if(!window.speechSynthesis)return;
+
+ speechSynthesis.cancel();
+
+ const utterance=new SpeechSynthesisUtterance(text);
+ utterance.lang=document.getElementById("language").value;
+ utterance.rate=1;
+ utterance.pitch=1;
+
+ speechSynthesis.speak(utterance);
+}
+
+async function askAI(text){
+
+ statusText.textContent="● AI THINKING...";
+
+ history.push({role:"user",content:text});
+
+ try{
+
+ const response=await fetch("/api/chat",{
+ method:"POST",
+ headers:{"Content-Type":"application/json"},
+ body:JSON.stringify({
+ messages:[
+ {role:"system",content:systemPrompt},
+ ...history
+ ]
+ })
+ });
+
+ if(!response.ok){
+ throw new Error("AI service error: "+response.status);
+ }
+
+ const data=await response.json();
+
+ const answer=data.reply ||
+ data.choices?.[0]?.message?.content;
+
+ if(!answer)throw new Error("No AI answer received");
+
+ history.push({role:"assistant",content:answer});
+
+ if(history.length>21){
+ history=history.slice(-20);
+ }
+
+ addMessage(answer,"ai");
+ speak(answer);
+
+ statusText.textContent="● SYSTEM READY";
+
+ }catch(error){
+
+ history.pop();
+
+ addMessage(
+ "AI शी संपर्क होत नाही. इंटरनेट किंवा Backend तपासा.",
+ "ai"
+ );
+
+ statusText.textContent="● CONNECTION ERROR";
+ console.error(error);
+ }
+}
+
+function send(){
+
+ const text=input.value.trim();
+ if(!text)return;
+
+ addMessage(text,"user");
+ input.value="";
+ askAI(text);
+}
+
+input.addEventListener("keydown",function(e){
+ if(e.key==="Enter")send();
+});
+
+function listen(){
+
+ const SpeechRecognition=
+ window.SpeechRecognition ||
+ window.webkitSpeechRecognition;
+
+ if(!SpeechRecognition){
+ statusText.textContent="● USE CHROME BROWSER";
+ return;
+ }
+
+ const recognition=new SpeechRecognition();
+
+ recognition.lang=document.getElementById("language").value;
+ recognition.continuous=false;
+ recognition.interimResults=false;
+
+ statusText.textContent="● LISTENING...";
+
+ recognition.onresult=function(event){
+
+ const text=event.results[0][0].transcript.trim();
+
+ if(!text)return;
+
+ addMessage(text,"user");
+ askAI(text);
+ };
+
+ recognition.onerror=function(){
+ statusText.textContent="● PLEASE TRY AGAIN";
+ };
+
+ recognition.onend=function(){
+ if(statusText.textContent==="● LISTENING..."){
+ statusText.textContent="● SYSTEM READY";
+ }
+ };
+
+ recognition.start();
+}
+
+function stopVoice(){
+ speechSynthesis.cancel();
+ statusText.textContent="● VOICE STOPPED";
+}
+</script>
+
+</body>
+  </html>
+  
