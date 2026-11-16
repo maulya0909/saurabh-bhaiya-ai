@@ -74,7 +74,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({ error: "Message required" })
       };
     }
-
+const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
     const instructions = plainMode
       ? `
 तुझे नाव सई आहे.
@@ -84,7 +84,7 @@ exports.handler = async (event) => {
 उत्तर लहान आणि बोलण्यासारखे ठेव (२-३ वाक्ये).
 तारका (*), हॅश (#), इमोजी, लिस्ट किंवा कोड ब्लॉक वापरू नकोस, कारण उत्तर आवाजात वाचले जाते.
 चुकीची माहिती देऊ नकोस. माहीत नसेल तर स्पष्ट सांग.
-`
+सध्याची भारतीय तारीख आणि वेळ: ${now}. वेळ किंवा तारीख विचारल्यास हीच वापर आणि मराठीत सांग.
       : `
 तुझे नाव सौरभ भैया आहे.
 
