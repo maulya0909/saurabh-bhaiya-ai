@@ -1,10 +1,14 @@
-
 exports.handler = async (event) => {
   const headers = {
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Access-Control-Allow-Methods": "POST, OPTIONS"
+  };
+
+  const textHeaders = {
+    ...headers,
+    "Content-Type": "text/plain; charset=utf-8"
   };
 
   if (event.httpMethod === "OPTIONS") {
@@ -19,6 +23,8 @@ exports.handler = async (event) => {
     };
   }
 
+  let plainMode = false;
+
   try {
     const apiKey = process.env.GROQ_API_KEY;
 
@@ -26,17 +32,42 @@ exports.handler = async (event) => {
       throw new Error("GROQ_API_KEY missing in Netlify");
     }
 
-    const body = JSON.parse(event.body || "{}");
+    let raw = event.body || "";
+    if (event.isBase64Encoded) {
+      raw = Buffer.from(raw, "base64").toString("utf-8");
+    }
 
-    const messages = (Array.isArray(body.messages) ? body.messages : [])
-      .filter(m =>
-        ["user", "assistant"].includes(m.role) &&
-        typeof m.content === "string" &&
-        m.content.trim()
-      )
-      .slice(-20);
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw || "{}");
+    } catch (e) {
+      parsed = null;
+    }
+
+    let messages;
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      messages = (Array.isArray(parsed.messages) ? parsed.messages : [])
+        .filter(m =>
+          ["user", "assistant"].includes(m.role) &&
+          typeof m.content === "string" &&
+          m.content.trim()
+        )
+        .slice(-20);
+    } else {
+      plainMode = true;
+      const text = raw.trim();
+      messages = text ? [{ role: "user", content: text }] : [];
+    }
 
     if (!messages.length) {
+      if (plainMode) {
+        return {
+          statusCode: 200,
+          headers: textHeaders,
+          body: "कृपया काहीतरी बोला सर."
+        };
+      }
       return {
         statusCode: 400,
         headers,
@@ -44,7 +75,17 @@ exports.handler = async (event) => {
       };
     }
 
-    const instructions = `
+    const instructions = plainMode
+      ? `
+तुझे नाव सई आहे.
+तू एक हुशार, गोड आणि मदत करणारी मराठी व्हॉइस असिस्टंट आहेस.
+वापरकर्त्याला नेहमी "सर" म्हणून संबोध.
+नेहमी मराठीत उत्तर दे.
+उत्तर लहान आणि बोलण्यासारखे ठेव (२-३ वाक्ये).
+तारका (*), हॅश (#), इमोजी, लिस्ट किंवा कोड ब्लॉक वापरू नकोस, कारण उत्तर आवाजात वाचले जाते.
+चुकीची माहिती देऊ नकोस. माहीत नसेल तर स्पष्ट सांग.
+`
+      : `
 तुझे नाव सौरभ भैया आहे.
 
 तू एक प्रगत, बुद्धिमान आणि सर्वसाधारण AI सहाय्यक आहेस.
@@ -75,6 +116,25 @@ exports.handler = async (event) => {
 तू सर्वसाधारण AI Assistant आहेस.
 `;
 
+    const payload = {
+      model: "openai/gpt-oss-20b",
+      instructions,
+      input: messages,
+      reasoning: { effort: plainMode ? "low" : "medium" },
+      max_output_tokens: plainMode ? 800 : 3000
+    };
+
+    if (!plainMode) {
+      payload.tools = [
+        { type: "browser_search" },
+        {
+          type: "code_interpreter",
+          container: { type: "auto" }
+        }
+      ];
+      payload.tool_choice = "auto";
+    }
+
     const response = await fetch(
       "https://api.groq.com/openai/v1/responses",
       {
@@ -83,23 +143,7 @@ exports.handler = async (event) => {
           "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          model: "openai/gpt-oss-20b",
-          instructions,
-          input: messages,
-          reasoning: {
-            effort: "medium"
-          },
-          tools: [
-            { type: "browser_search" },
-            {
-              type: "code_interpreter",
-              container: { type: "auto" }
-            }
-          ],
-          tool_choice: "auto",
-          max_output_tokens: 3000
-        })
+        body: JSON.stringify(payload)
       }
     );
 
@@ -122,6 +166,14 @@ exports.handler = async (event) => {
       throw new Error("AI response was empty");
     }
 
+    if (plainMode) {
+      return {
+        statusCode: 200,
+        headers: textHeaders,
+        body: reply.trim()
+      };
+    }
+
     return {
       statusCode: 200,
       headers,
@@ -131,6 +183,13 @@ exports.handler = async (event) => {
     };
 
   } catch (error) {
+    if (plainMode) {
+      return {
+        statusCode: 200,
+        headers: textHeaders,
+        body: "माफ करा सर, काहीतरी चूक झाली."
+      };
+    }
     return {
       statusCode: 500,
       headers,
