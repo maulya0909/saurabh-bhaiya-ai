@@ -122,7 +122,7 @@ const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekd
       instructions,
       input: messages,
       reasoning: { effort: plainMode ? "low" : "medium" },
-      max_output_tokens: plainMode ? 800 : 3000
+      max_output_tokens: plainMode ? 400 : 3000
     };
 
     if (!plainMode) {
