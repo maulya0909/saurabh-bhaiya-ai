@@ -1,7 +1,7 @@
 
 exports.handler = async (event) => {
-  const send = (reply, statusCode = 200) => ({
-    statusCode,
+  const respond = (reply) => ({
+    statusCode: 200,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store"
@@ -10,31 +10,36 @@ exports.handler = async (event) => {
   });
 
   if (event.httpMethod !== "POST") {
-    return send("POST request आवश्यक आहे.", 405);
+    return {
+      statusCode: 405,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ error: "POST request required" })
+    };
   }
 
   try {
     const apiKey = process.env.GROQ_API_KEY;
 
     if (!apiKey) {
-      return send("GROQ_API_KEY Netlify मध्ये सेट केलेली नाही.");
+      return respond("Netlify मध्ये GROQ_API_KEY सेट केलेली नाही.");
     }
 
     const body = JSON.parse(event.body || "{}");
+
     const messages = Array.isArray(body.messages)
       ? body.messages
       : [];
 
-    const cleanMessages = messages
-      .filter(m =>
-        ["user", "assistant"].includes(m.role) &&
-        typeof m.content === "string" &&
-        m.content.trim().length > 0
+    const chatMessages = messages
+      .filter(message =>
+        ["user", "assistant"].includes(message.role) &&
+        typeof message.content === "string" &&
+        message.content.trim().length > 0
       )
       .slice(-16);
 
-    if (!cleanMessages.length) {
-      return send("कृपया मला एखादा प्रश्न विचारा.");
+    if (!chatMessages.length) {
+      return respond("कृपया मला प्रश्न विचारा.");
     }
 
     const apiResponse = await fetch(
@@ -42,11 +47,11 @@ exports.handler = async (event) => {
       {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "openai/gpt-oss-20b",
           messages: [
             {
               role: "system",
@@ -54,22 +59,22 @@ exports.handler = async (event) => {
 
 तू एक Advanced Marathi AI Assistant आहेस.
 
-तुझे नियम:
-1. सोप्या आणि स्पष्ट मराठीत उत्तर दे.
-2. प्रत्येक प्रश्न समजून घेऊन उत्तर दे.
-3. एकच वाक्य वारंवार वापरू नकोस.
-4. अनावश्यक शब्दांची पुनरावृत्ती करू नकोस.
-5. आधीच्या संभाषणाचा संदर्भ लक्षात ठेव.
-6. प्रत्येक उत्तर प्रश्नानुसार तयार कर.
-7. उत्तर माहितीपूर्ण आणि मुद्देसूद ठेव.
-8. माहिती माहीत नसेल तर स्पष्ट सांग.
-9. वापरकर्त्याला योग्य मार्गदर्शन कर.
-10. स्वतःची ओळख सौरभ भैया AI अशी दे.`
+तुझी वैशिष्ट्ये:
+- सोप्या मराठीत संवाद साध.
+- वापरकर्त्याचा प्रश्न पूर्ण समजून घे.
+- अचूक आणि उपयुक्त उत्तरे दे.
+- एकच शब्द किंवा वाक्य वारंवार वापरू नकोस.
+- प्रत्येक प्रश्नाला संदर्भानुसार नवीन उत्तर दे.
+- आधीच्या संभाषणाचा संदर्भ लक्षात ठेव.
+- अनावश्यक लांब उत्तरे देऊ नकोस.
+- माहिती माहीत नसेल तर स्पष्ट सांग.
+- तांत्रिक मार्गदर्शन क्रमाने दे.
+- वापरकर्त्याने इंग्रजी मागितल्यास इंग्रजीत उत्तर दे.
+- स्वतःची ओळख सौरभ भैया AI अशी दे.`
             },
-            ...cleanMessages
+            ...chatMessages
           ],
-          temperature: 0.8,
-          max_tokens: 700
+          max_tokens: 1000
         })
       }
     );
@@ -78,29 +83,29 @@ exports.handler = async (event) => {
 
     if (!apiResponse.ok) {
       if (apiResponse.status === 401) {
-        return send("Groq API Key चुकीची आहे. Netlify Environment Variables तपासा.");
+        return respond("Groq API Key चुकीची आहे. Netlify मध्ये ती तपासा.");
       }
 
       if (apiResponse.status === 429) {
-        return send("Groq ची सध्याची वापर मर्यादा पूर्ण झाली आहे. थोड्या वेळाने प्रयत्न करा.");
+        return respond("Groq वापर मर्यादा पूर्ण झाली आहे. थोड्या वेळाने प्रयत्न करा.");
       }
 
-      return send(
-        "Groq API Error: " +
-        (result.error?.message || "कनेक्शनमध्ये अडचण आली.")
+      return respond(
+        "Groq Error: " +
+        (result.error?.message || "AI सेवा उपलब्ध नाही.")
       );
     }
 
     const answer = result.choices?.[0]?.message?.content;
 
-    if (!answer) {
-      return send("AI कडून उत्तर मिळाले नाही. पुन्हा प्रयत्न करा.");
+    if (!answer || !answer.trim()) {
+      return respond("मला उत्तर मिळाले नाही. पुन्हा प्रयत्न करा.");
     }
 
-    return send(answer.trim());
+    return respond(answer.trim());
 
   } catch (error) {
-    return send("Server Error: " + error.message);
+    return respond("Server Error: " + error.message);
   }
 };
-                  
+      
