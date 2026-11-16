@@ -1,19 +1,21 @@
 
 exports.handler = async (event) => {
-  const respond = (reply) => ({
-    statusCode: 200,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store"
-    },
-    body: JSON.stringify({ reply })
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS"
+  };
+
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers, body: "" };
+  }
 
   if (event.httpMethod !== "POST") {
     return {
       statusCode: 405,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: "POST request required" })
+      headers,
+      body: JSON.stringify({ error: "Method not allowed" })
     };
   }
 
@@ -21,91 +23,120 @@ exports.handler = async (event) => {
     const apiKey = process.env.GROQ_API_KEY;
 
     if (!apiKey) {
-      return respond("Netlify मध्ये GROQ_API_KEY सेट केलेली नाही.");
+      throw new Error("GROQ_API_KEY missing in Netlify");
     }
 
     const body = JSON.parse(event.body || "{}");
 
-    const messages = Array.isArray(body.messages)
-      ? body.messages
-      : [];
-
-    const chatMessages = messages
-      .filter(message =>
-        ["user", "assistant"].includes(message.role) &&
-        typeof message.content === "string" &&
-        message.content.trim().length > 0
+    const messages = (Array.isArray(body.messages) ? body.messages : [])
+      .filter(m =>
+        ["user", "assistant"].includes(m.role) &&
+        typeof m.content === "string" &&
+        m.content.trim()
       )
-      .slice(-16);
+      .slice(-20);
 
-    if (!chatMessages.length) {
-      return respond("कृपया मला प्रश्न विचारा.");
+    if (!messages.length) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({ error: "Message required" })
+      };
     }
 
-    const apiResponse = await fetch(
-      "https://api.groq.com/openai/v1/chat/completions",
+    const instructions = `
+तुझे नाव सौरभ भैया आहे.
+
+तू एक प्रगत, बुद्धिमान आणि सर्वसाधारण AI सहाय्यक आहेस.
+
+तुझी मुख्य कामे:
+
+- कोणत्याही सामान्य विषयावर प्रश्नांची उत्तरे दे.
+- विज्ञान, गणित, इतिहास, भूगोल समजाव.
+- अभ्यास आणि शिक्षणात मदत कर.
+- मोबाईल, संगणक आणि टेक्नॉलॉजी समजाव.
+- HTML, CSS, JavaScript आणि Python कोड लिही.
+- शेती, व्यवसाय आणि सामान्य ज्ञानाबद्दल मदत कर.
+- मराठी, हिंदी आणि इंग्रजी समज.
+- कठीण प्रश्न सोप्या भाषेत समजाव.
+- आवश्यक असल्यास उदाहरणे दे.
+- गणिती प्रश्न काळजीपूर्वक सोडव.
+- नवीन माहिती आवश्यक असल्यास Browser Search वापर.
+- गणनेसाठी Code Interpreter वापर.
+- चुकीची माहिती देऊ नकोस.
+- माहिती माहीत नसेल तर स्पष्ट सांग.
+- एकाच उत्तराची पुनरावृत्ती करू नकोस.
+- मागील संभाषणाचा संदर्भ वापर.
+- वापरकर्त्याला मराठीत उत्तर देणे पसंत आहे.
+- उत्तर नैसर्गिक, स्पष्ट आणि उपयुक्त ठेव.
+- स्वतः करू शकत नसलेली कृती केल्याचा दावा करू नकोस.
+
+तू फक्त ठरावीक प्रश्नांची उत्तरे देणारा Bot नाहीस.
+तू सर्वसाधारण AI Assistant आहेस.
+`;
+
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/responses",
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({
           model: "openai/gpt-oss-20b",
-          messages: [
+          instructions,
+          input: messages,
+          reasoning: {
+            effort: "medium"
+          },
+          tools: [
+            { type: "browser_search" },
             {
-              role: "system",
-              content: `तुझे नाव सौरभ भैया AI आहे.
-
-तू एक Advanced Marathi AI Assistant आहेस.
-
-तुझी वैशिष्ट्ये:
-- सोप्या मराठीत संवाद साध.
-- वापरकर्त्याचा प्रश्न पूर्ण समजून घे.
-- अचूक आणि उपयुक्त उत्तरे दे.
-- एकच शब्द किंवा वाक्य वारंवार वापरू नकोस.
-- प्रत्येक प्रश्नाला संदर्भानुसार नवीन उत्तर दे.
-- आधीच्या संभाषणाचा संदर्भ लक्षात ठेव.
-- अनावश्यक लांब उत्तरे देऊ नकोस.
-- माहिती माहीत नसेल तर स्पष्ट सांग.
-- तांत्रिक मार्गदर्शन क्रमाने दे.
-- वापरकर्त्याने इंग्रजी मागितल्यास इंग्रजीत उत्तर दे.
-- स्वतःची ओळख सौरभ भैया AI अशी दे.`
-            },
-            ...chatMessages
+              type: "code_interpreter",
+              container: { type: "auto" }
+            }
           ],
-          max_tokens: 1000
+          tool_choice: "auto",
+          max_output_tokens: 3000
         })
       }
     );
 
-    const result = await apiResponse.json();
+    const result = await response.json();
 
-    if (!apiResponse.ok) {
-      if (apiResponse.status === 401) {
-        return respond("Groq API Key चुकीची आहे. Netlify मध्ये ती तपासा.");
-      }
-
-      if (apiResponse.status === 429) {
-        return respond("Groq वापर मर्यादा पूर्ण झाली आहे. थोड्या वेळाने प्रयत्न करा.");
-      }
-
-      return respond(
-        "Groq Error: " +
-        (result.error?.message || "AI सेवा उपलब्ध नाही.")
+    if (!response.ok) {
+      throw new Error(
+        result.error?.message || "Groq API request failed"
       );
     }
 
-    const answer = result.choices?.[0]?.message?.content;
+    const reply = (result.output || [])
+      .filter(item => item.type === "message")
+      .flatMap(item => item.content || [])
+      .filter(item => item.type === "output_text")
+      .map(item => item.text)
+      .join("\n");
 
-    if (!answer || !answer.trim()) {
-      return respond("मला उत्तर मिळाले नाही. पुन्हा प्रयत्न करा.");
+    if (!reply.trim()) {
+      throw new Error("AI response was empty");
     }
 
-    return respond(answer.trim());
+    return {
+      statusCode: 200,
+      headers,
+      body: JSON.stringify({
+        reply: reply.trim()
+      })
+    };
 
   } catch (error) {
-    return respond("Server Error: " + error.message);
+    return {
+      statusCode: 500,
+      headers,
+      body: JSON.stringify({
+        error: error.message || "Unknown server error"
+      })
+    };
   }
 };
-      
