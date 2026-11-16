@@ -118,7 +118,7 @@ const now = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata", weekd
 `;
 
     const payload = {
-      model: "openai/gpt-oss-20b",
+      model: "llama-3.3-70b-versatile",
       instructions,
       input: messages,
       reasoning: { effort: plainMode ? "low" : "medium" },
